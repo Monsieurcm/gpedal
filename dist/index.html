@@ -471,19 +471,17 @@
         text-align: center;
       }
 
-      #input-ride-name {
-        margin-bottom: 0.4vw;
-        text-align: center;
-        font-size: 1.2vw;
-        padding: .5vw .75vw;
-      }
-
-      #btn-export-strava {
+      #btn-download-fit {
         background-color: #fa632e;
         border-color: #e0430b;
         font-size: 1.5vw;
         margin-bottom: 0.4vw;
         padding: .5vw .75vw;
+      }
+
+      #export-format {
+        font-size: 1.1vw;
+        margin-bottom: 0.4vw;
       }
 
       #btn-fullscreen {
@@ -504,16 +502,6 @@
 
       #rider-weight {
         width: 20vw;
-      }
-
-      #strava-error-message {
-          font-weight: bold;
-          color: #f00;
-      }
-      
-      #strva-post-error {
-          font-weight: bold;
-          color: #f00;
       }
 
       html, body {
@@ -621,9 +609,11 @@
                     Ride Finished
                 </div>
                 <div id="ui-finalize-actions">
-                    <span id="strva-post-error" style="display: none"></span>
-                    <input id="input-ride-name" class="form-control" type="text" style="display: none" placeholder="Name Ride">
-                    <a href="#" id="btn-export-strava" class="btn btn-secondary active" role="button" aria-pressed="true" style="display: none">Export to Strava</a>
+                  <select id="export-format" class="custom-select" style="display: none; width: 16vw; margin: 0 auto 0.4vw auto;">
+                    <option value="fit" selected>FIT</option>
+                    <option value="gpx">GPX</option>
+                  </select>
+                  <a href="#" id="btn-download-fit" class="btn btn-secondary active" role="button" aria-pressed="true" style="display: none">Télécharger</a>
                     <a href="#" id="btn-fullscreen" class="btn btn-secondary active" role="button" aria-pressed="true" style="display: block">Go Fullscreen</a>
                 </div>
             </div>
@@ -769,27 +759,6 @@
                                 </select>
                             </div>
                         </div>
-                        <div class="form-row" id="container-strava">
-                            <div class="form-group col-md-6">
-                                <label class="col-form-label">Connections</label>
-                                <div class="container">
-                                    <div class="row">
-                                        <div class="col-4" style="padding-left: 0; padding-right: 0">
-                                            <img src="./images/strava.png" id="strava-connection" style="width: 100%; margin-top: 5px"/>
-                                        </div>
-                                        <div class="col-6">
-                                            <a href="#" id="strava-btn-connect" class="btn btn-secondary active" role="button" aria-pressed="true">Connect</a>
-                                            <a href="#" id="strava-btn-connected" class="btn btn-success disabled" style="display: none" role="button" aria-pressed="true">Connected</a>
-                                            <span id="strava-clear" style="font-size: 12px; display: none">
-                                                <a href="#" id="strava-btn-clear">Clear Connection</a>
-                                            </span>
-                                            <span id="strava-error-message" style="font-size: 12px; display: none">
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                         <button type="submit" id="begin-session" class="btn btn-primary">Begin</button>
                     </form>
                 </div>
@@ -806,36 +775,6 @@
 
     </div>
 
-    <script id="strava-gpx-template" type="x-tmpl-mustache">
-    <?xml version="1.0" encoding="UTF-8"?>
-    <gpx creator="GPedalGPX" version="1.1" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd http://www.garmin.com/xmlschemas/GpxExtensions/v3 http://www.garmin.com/xmlschemas/GpxExtensionsv3.xsd http://www.garmin.com/xmlschemas/TrackPointExtension/v1 http://www.garmin.com/xmlschemas/TrackPointExtensionv1.xsd http://www.garmin.com/xmlschemas/GpxExtensions/v3 http://www.garmin.com/xmlschemas/GpxExtensionsv3.xsd http://www.garmin.com/xmlschemas/TrackPointExtension/v1 http://www.garmin.com/xmlschemas/TrackPointExtensionv1.xsd" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1" xmlns:gpxx="http://www.garmin.com/xmlschemas/GpxExtensions/v3">
-     <metadata>
-      <time>{{ export_time }}</time>
-     </metadata>
-     <trk>
-      <name>{{ export_name }}</name>
-      <trkseg>
-       {{#points}}
-       <trkpt lat="{{ lat }}" lon="{{ lng }}">
-        <ele>{{ elevation }}</ele>
-        <time>{{ time }}</time>
-        <extensions>
-         <power>{{ power }}</power>
-         <gpxtpx:TrackPointExtension>
-          {{#hr}}
-          <gpxtpx:hr>{{ hr }}</gpxtpx:hr>
-          {{/hr}}
-          {{#cad}}
-          <gpxtpx:cad>{{ cad }}</gpxtpx:cad>
-          {{/cad}}
-         </gpxtpx:TrackPointExtension>
-        </extensions>
-       </trkpt>
-       {{/points}}
-      </trkseg>
-     </trk>
-    </gpx>
-    </script>
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD8CBYhq7f2aibteBvLz2jvRZAHu346qJM&libraries=geometry"></script>
     <script src="bundle.js?v=3dfva3d"></script>
   </body>

@@ -1,15 +1,11 @@
 import {geocode, getPanoramaByLocation} from './lib/gmapPromises';
-import {timeout, dateFormat, hasStravaOauthTokens,
-    getStravaOauthTokens, setStravaOauthTokens,
-    removeStravaOauthTokens} from './lib/utils';
+import {timeout} from './lib/utils';
 import {CalculateRho} from './lib/air_density';
 import {CalculateVelocity} from './lib/power_v_speed';
-import Mustache from 'mustache';
 import {d3} from "./lib/d3Wrapper";
-import {credentials} from "./lib/oauth";
 import {RoutePoint} from "./Route";
 import {managedLocalStorage} from './lib/managedLocalStorage';
-import 'formdata-polyfill';
+import {FitWriter} from '@markw65/fit-file-writer';
 
 
 export class GPedalDisplay {
@@ -148,6 +144,274 @@ export class GPedalDisplay {
 
   collectCadence(cadence) {
     this.ridingState.rpm = cadence;
+  }
+
+  buildExportContext() {
+    if(!this.history.length) {
+      throw new Error('No ride history available for export');
+    }
+
+    let startEntry = this.history[0];
+    let endEntry = this.history[this.history.length - 1];
+
+    let values = key => this.history
+      .map(entry => entry[key])
+      .filter(value => typeof value === 'number' && Number.isFinite(value));
+
+    let average = numbers => numbers.length ? numbers.reduce((sum, value) => sum + value, 0) / numbers.length : 0;
+    let max = numbers => numbers.length ? Math.max(...numbers) : 0;
+
+    let points = [];
+    let totalDistance = 0;
+    let totalAscent = 0;
+    let totalDescent = 0;
+    let maxSpeed = 0;
+    let previousEntry = undefined;
+    let previousDistance = 0;
+
+    this.history.forEach(entry => {
+      let segmentDistance = 0;
+      if(previousEntry) {
+        segmentDistance = google.maps.geometry.spherical.computeDistanceBetween(previousEntry.location, entry.location);
+        totalDistance += segmentDistance;
+
+        let elevationDelta = entry.elevation - previousEntry.elevation;
+        if(elevationDelta > 0) {
+          totalAscent += elevationDelta;
+        } else {
+          totalDescent += Math.abs(elevationDelta);
+        }
+      }
+
+      let speed = 0;
+      if(previousEntry) {
+        let elapsedSeconds = Math.max((entry.time - previousEntry.time) / 1000, 1);
+        speed = (totalDistance - previousDistance) / elapsedSeconds;
+        maxSpeed = Math.max(maxSpeed, speed);
+      }
+
+      points.push({
+        speed,
+        segment_distance: segmentDistance,
+        distance: totalDistance,
+        latitude: entry.location.lat(),
+        longitude: entry.location.lng(),
+        elevation: entry.elevation,
+        time: entry.time,
+        time_iso: entry.time.toISOString()
+      });
+      previousEntry = entry;
+      previousDistance = totalDistance;
+    });
+
+    let totalElapsedTime = Math.max((endEntry.time - startEntry.time) / 1000, 0);
+    let heartRates = values('hr');
+    let cadences = values('cad');
+    let powers = values('power');
+    let avgSpeed = totalElapsedTime > 0 ? totalDistance / totalElapsedTime : 0;
+    let avgHeartRate = average(heartRates);
+    let maxHeartRate = max(heartRates);
+    let avgCadence = average(cadences);
+    let maxCadence = max(cadences);
+    let avgPower = average(powers);
+    let maxPower = max(powers);
+    return {
+      startEntry,
+      endEntry,
+      points,
+      totalDistance,
+      totalAscent,
+      totalDescent,
+      totalElapsedTime,
+      avgSpeed,
+      maxSpeed,
+      avgHeartRate,
+      maxHeartRate,
+      avgCadence,
+      maxCadence,
+      avgPower,
+      maxPower,
+      serialNumber: Math.abs(Math.floor(this.id)) % 0xFFFFFFFF,
+      startTimestamp: startEntry.time,
+      endTimestamp: endEntry.time,
+      startTimeIso: startEntry.time.toISOString(),
+      endTimeIso: endEntry.time.toISOString(),
+      rideName: this.routeName || 'GPedal'
+    };
+  }
+
+  escapeXml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
+  buildFitData() {
+    let exportData = this.buildExportContext();
+    let fitWriter = new FitWriter();
+    let fitStart = fitWriter.time(exportData.startTimestamp);
+    let fitEnd = fitWriter.time(exportData.endTimestamp);
+
+    fitWriter.writeMessage('file_id', {
+      type: 'activity',
+      manufacturer: 'garmin',
+      product: 0,
+      serial_number: exportData.serialNumber,
+      time_created: fitStart,
+      product_name: 'GPedal'
+    }, null, true);
+
+    exportData.points.forEach((entry, index) => {
+      let record = {
+        timestamp: fitWriter.time(entry.time),
+        position_lat: fitWriter.latlng(entry.latitude * Math.PI / 180),
+        position_long: fitWriter.latlng(entry.longitude * Math.PI / 180),
+        distance: entry.distance
+      };
+
+      if(entry.elevation !== undefined && entry.elevation !== null) {
+        record.altitude = entry.elevation;
+      }
+      if(entry.hr !== undefined && entry.hr !== null) {
+        record.heart_rate = entry.hr;
+      }
+      if(entry.cad !== undefined && entry.cad !== null) {
+        record.cadence = entry.cad;
+      }
+      if(entry.power !== undefined && entry.power !== null) {
+        record.power = entry.power;
+      }
+      if(index > 0 && entry.speed !== undefined) {
+        record.speed = entry.speed;
+      }
+
+      fitWriter.writeMessage('record', record);
+    });
+
+    fitWriter.writeMessage('lap', {
+      event: 'lap',
+      event_type: 'stop',
+      start_time: fitStart,
+      start_position_lat: fitWriter.latlng(exportData.startEntry.location.lat() * Math.PI / 180),
+      start_position_long: fitWriter.latlng(exportData.startEntry.location.lng() * Math.PI / 180),
+      end_position_lat: fitWriter.latlng(exportData.endEntry.location.lat() * Math.PI / 180),
+      end_position_long: fitWriter.latlng(exportData.endEntry.location.lng() * Math.PI / 180),
+      total_elapsed_time: exportData.totalElapsedTime,
+      total_timer_time: exportData.totalElapsedTime,
+      total_distance: exportData.totalDistance,
+      avg_speed: exportData.avgSpeed,
+      max_speed: exportData.maxSpeed,
+      avg_heart_rate: exportData.avgHeartRate,
+      max_heart_rate: exportData.maxHeartRate,
+      avg_cadence: exportData.avgCadence,
+      max_cadence: exportData.maxCadence,
+      avg_power: exportData.avgPower,
+      max_power: exportData.maxPower,
+      total_ascent: exportData.totalAscent,
+      total_descent: exportData.totalDescent,
+      intensity: 'active',
+      lap_trigger: 'session_end',
+      sport: 'cycling',
+      sub_sport: 'indoor_cycling',
+      timestamp: fitEnd
+    }, null, true);
+
+    fitWriter.writeMessage('session', {
+      event: 'session',
+      event_type: 'stop',
+      start_time: fitStart,
+      start_position_lat: fitWriter.latlng(exportData.startEntry.location.lat() * Math.PI / 180),
+      start_position_long: fitWriter.latlng(exportData.startEntry.location.lng() * Math.PI / 180),
+      end_position_lat: fitWriter.latlng(exportData.endEntry.location.lat() * Math.PI / 180),
+      end_position_long: fitWriter.latlng(exportData.endEntry.location.lng() * Math.PI / 180),
+      total_elapsed_time: exportData.totalElapsedTime,
+      total_timer_time: exportData.totalElapsedTime,
+      total_distance: exportData.totalDistance,
+      avg_speed: exportData.avgSpeed,
+      max_speed: exportData.maxSpeed,
+      avg_heart_rate: exportData.avgHeartRate,
+      max_heart_rate: exportData.maxHeartRate,
+      avg_cadence: exportData.avgCadence,
+      max_cadence: exportData.maxCadence,
+      avg_power: exportData.avgPower,
+      max_power: exportData.maxPower,
+      total_ascent: exportData.totalAscent,
+      total_descent: exportData.totalDescent,
+      total_calories: 0,
+      trigger: 'manual',
+      sport: 'cycling',
+      sub_sport: 'indoor_cycling',
+      timestamp: fitEnd
+    }, null, true);
+
+    fitWriter.writeMessage('activity', {
+      total_timer_time: exportData.totalElapsedTime,
+      num_sessions: 1,
+      type: 'manual',
+      event: 'activity',
+      event_type: 'stop',
+      local_timestamp: fitStart - exportData.startTimestamp.getTimezoneOffset() * 60,
+      timestamp: fitEnd
+    }, null, true);
+
+    return fitWriter.finish();
+  }
+
+  buildGpxData() {
+    let exportData = this.buildExportContext();
+    let pointsXml = exportData.points.map(point => {
+      let extensions = [];
+      if(point.power !== undefined && point.power !== null) {
+        extensions.push(`<power>${point.power}</power>`);
+      }
+      if(point.hr !== undefined && point.hr !== null) {
+        extensions.push(`<gpxtpx:hr>${point.hr}</gpxtpx:hr>`);
+      }
+      if(point.cad !== undefined && point.cad !== null) {
+        extensions.push(`<gpxtpx:cad>${point.cad}</gpxtpx:cad>`);
+      }
+
+      return [
+        `<trkpt lat="${point.latitude}" lon="${point.longitude}">`,
+        `  <ele>${point.elevation}</ele>`,
+        `  <time>${point.time_iso}</time>`,
+        extensions.length ? '  <extensions>' : null,
+        extensions.length ? '    <gpxtpx:TrackPointExtension>' : null,
+        ...extensions.map(extension => `      ${extension}`),
+        extensions.length ? '    </gpxtpx:TrackPointExtension>' : null,
+        extensions.length ? '  </extensions>' : null,
+        `</trkpt>`
+      ].filter(Boolean).join('\n');
+    }).join('\n');
+
+    return [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<gpx creator="GPedal" version="1.1" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd http://www.garmin.com/xmlschemas/TrackPointExtension/v1 http://www.garmin.com/xmlschemas/TrackPointExtensionv1.xsd">',
+      ` <metadata><time>${exportData.startTimeIso}</time></metadata>`,
+      ' <trk>',
+      `  <name>${this.escapeXml(exportData.rideName)}</name>`,
+      '  <trkseg>',
+      pointsXml,
+      '  </trkseg>',
+      ' </trk>',
+      '</gpx>'
+    ].join('\n');
+  }
+
+  downloadBlob(blob, filename) {
+    let objectUrl = URL.createObjectURL(blob);
+    let link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
   }
 
   streetViewPanoramaInit(location, heading) {
@@ -566,141 +830,55 @@ export class GPedalDisplay {
     }
   }
 
-  async stravaExport() {
-    let $stva = document.getElementById('btn-export-strava');
-    if(!$stva.classList.contains('disabled')) {
-      $stva.classList.add('disabled');
+  async downloadExport() {
+    let $button = document.getElementById('btn-download-fit');
+    if(!$button.classList.contains('disabled')) {
+      $button.classList.add('disabled');
     } else {
       return;
     }
 
-    $stva.innerHTML = "Exporting";
-    let $name = document.getElementById('input-ride-name');
-    let name = $name.value;
+    let $format = document.getElementById('export-format');
+    let format = $format ? $format.value : 'fit';
+    let filename = format === 'gpx' ? 'activity.gpx' : 'activity.fit';
 
-    let template = document.getElementById('strava-gpx-template').innerHTML;
-    let points = this.history.map(h => {
-      return {
-        lat: h.location.lat(),
-        lng: h.location.lng(),
-        elevation: h.elevation.toFixed(5),
-        time: dateFormat(h.time),
-        power: h.power,
-        hr: h.hr,
-        cad: h.cad
-      }
-    });
+    $button.innerHTML = 'Téléchargement...';
 
-    let gpxBody = Mustache.render(template, {
-      export_time: dateFormat(new Date()),
-      export_name: name,
-      points: points
-    });
-
-    let stravaOauth = getStravaOauthTokens();
-    let tokenForm = new FormData();
-    tokenForm.set('client_id', credentials.STRAVA_CLIENT_ID);
-    tokenForm.set('client_secret', credentials.STRAVA_CLIENT_SECRET);
-    tokenForm.set('refresh_token', stravaOauth.refresh_token);
-    tokenForm.set('grant_type', 'refresh_token');
-    let token_response = await fetch('https://www.strava.com/oauth/token', {
-      method: 'POST',
-      body: tokenForm
-    });
-    if(!token_response.ok) {
-        let err = await token_response.json();
-        let msg = err.message;
-        let reason = JSON.stringify(err.errors);
-        let $strvape = document.getElementById('strva-post-error');
-        $strvape.innerHTML = `<p>An error occurred while authorizing with Strava</p><p>${msg} - ${reason}</p><br /><br />`;
-        $strvape.style.display = 'block';
-        $name.style.display = 'none';
-        return;
-    }
-    let token_body = await token_response.json();
-    stravaOauth.access_token = token_body.access_token;
-    stravaOauth.refresh_token = token_body.refresh_token;
-    setStravaOauthTokens(stravaOauth);
-
-    let gpxFile = new File([gpxBody], "import_to_strava.gpx", {type : 'text/xml'});
-    let form = new FormData();
-    form.set('activity_type', 'virtualride');
-    form.set('name', name);
-    form.set('data_type', 'gpx');
-    form.set('file', gpxFile);
-    let headers = new Headers();
-    headers.set('Authorization', 'Bearer ' + stravaOauth.access_token);
-    let response = await fetch('https://www.strava.com/api/v3/uploads', {
-      method: 'POST',
-      headers: headers,
-      body: form
-    });
-    if(!response.ok) {
-        let err = await response.json();
-        let msg = err.message;
-        let reason = JSON.stringify(err.errors);
-        let $strvape = document.getElementById('strva-post-error');
-        $strvape.innerHTML = `<p>An error occurred while uploading to Strava</p><p>${msg} - ${reason}</p><br /><br />`;
-        $strvape.style.display = 'block';
-        $name.style.display = 'none';
-        return;
-    }
-    let body = await response.json();
-    let req_id = body.id;
-
-    while(true) {
-      let status_response = await fetch('https://www.strava.com/api/v3/uploads/' + req_id, {
-        headers: headers
-      });
-      if(!status_response.ok) {
-        let err = await status_response.json();
-        let msg = err.message;
-        let reason = JSON.stringify(err.errors);
-        let $strvape = document.getElementById('strva-post-error');
-        $strvape.innerHTML = `<p>An error occurred while waiting on upload to Strava</p><p>${msg} - ${reason}</p><br /><br />`;
-        $strvape.style.display = 'block';
-        $name.style.display = 'none';
-        return;
-      }
-      let status_body = await status_response.json();
-      if(status_body.activity_id) {
-        break;
+    try {
+      let blob;
+      if(format === 'gpx') {
+        blob = new Blob([this.buildGpxData()], {type: 'application/gpx+xml'});
+      } else {
+        blob = new Blob([this.buildFitData()], {type: 'application/vnd.garmin.fit'});
       }
 
-      await timeout(4000);
-    }
+      this.downloadBlob(blob, filename);
 
-    this.routeCompleted = true;
-    managedLocalStorage.remove('route-progress', this.cacheName());
-    $stva.innerHTML = "Done!";
+      this.routeCompleted = true;
+      managedLocalStorage.remove('route-progress', this.cacheName());
+      $button.innerHTML = 'Téléchargé !';
+    } catch(error) {
+      console.log('Error: ', error);
+      $button.innerHTML = 'Télécharger';
+      $button.classList.remove('disabled');
+      throw error;
+    }
   }
 
   showFinalizeUI(msg) {
     document.getElementById('ui-finalize-container').style.display = 'block';
     document.getElementById('ui-finalize-label').innerHTML = msg;
-    if(hasStravaOauthTokens()) {
-      let now = new Date();
-      let ride_name = "GPedal - ";
-      if(this.routeName) {
-        ride_name += this.routeName;
-      } else {
-        ride_name += (now.getMonth() + 1) + "/" + now.getDate()
-      }
-      let $name = document.getElementById('input-ride-name');
-      $name.value = ride_name;
-      $name.style.display = 'block';
+    document.getElementById('export-format').style.display = 'block';
+    let $button = document.getElementById('btn-download-fit');
+    $button.style.display = 'block';
+    $button.onclick = e => {
+      e.preventDefault();
 
-      let $stva = document.getElementById('btn-export-strava');
-      $stva.style.display = 'block';
-      $stva.onclick = e => {
-        e.preventDefault();
-
-        this.stravaExport()
-          .catch(error => {
-            console.log("Error: ", error);
-          });
-      };
-    }
+      this.downloadExport()
+        .catch(error => {
+          console.log('Error: ', error);
+        });
+    };
   }
 
   cacheName() {
