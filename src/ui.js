@@ -68,6 +68,55 @@ export async function registerUI() {
   let $antcontainer = document.getElementById('ant-device-container');
   let $serialcontainer = document.getElementById('serial-device-container');
   let $antwsurl = document.getElementById('ant-ws-url');
+  let $msg = document.getElementById('messages');
+
+  let showErrorMessage = (msg) => {
+    $msg.innerHTML = msg;
+    $msg.style.display = 'block';
+    window.scrollTo(0, 0);
+  };
+
+  let hideErrorMessage = () => {
+    $msg.innerHTML = '';
+    $msg.style.display = 'none';
+  };
+
+  let waitForGoogleMaps = (timeoutMs = 12000) => {
+    return new Promise((resolve, reject) => {
+      let start = Date.now();
+
+      let checkReady = () => {
+        if(window.google && window.google.maps) {
+          resolve();
+          return;
+        }
+
+        if((Date.now() - start) >= timeoutMs) {
+          let origin = window.location.origin;
+          let path = window.location.pathname;
+          let basePath = path.endsWith('/') ? path : path.substring(0, path.lastIndexOf('/') + 1);
+          let currentURL = `${origin}${path}`;
+
+          let suggestedRoot = origin + '/*';
+          let suggestedPath = `${origin}${basePath}*`;
+          if(origin.includes('localhost') || origin.includes('127.0.0.1')) {
+            suggestedRoot = origin.startsWith('https://') ? 'https://localhost/*' : 'http://localhost/*';
+            suggestedPath = origin.startsWith('https://') ? 'https://127.0.0.1/*' : 'http://127.0.0.1/*';
+          }
+
+          reject(new Error(
+            `Google Maps did not load for this site (${currentURL}). ` +
+            `Authorize these referrers in your API key restrictions: ${suggestedRoot} and ${suggestedPath}.`
+          ));
+          return;
+        }
+
+        setTimeout(checkReady, 120);
+      };
+
+      checkReady();
+    });
+  };
 
   let redrawMeters = device => {
     $pm.options.length = 0;
@@ -396,6 +445,7 @@ export async function registerUI() {
   */
   $btn.onclick = (e) => {
     e.preventDefault();
+    hideErrorMessage();
 
     if(($gpx.value || $previous.value) && $weight.value) {
       if(!$btn.classList.contains('disabled')) {
@@ -411,23 +461,37 @@ export async function registerUI() {
         let heartMeterID = $hm.value;
         let heartMeter;
         if(heartMeterID) {
-          heartMeter = heartMeters.find(m => m[0] === heartMeterID)[1];
+          let selectedHeartMeter = heartMeters.find(m => m[0] === heartMeterID);
+          if(!selectedHeartMeter) {
+            throw new Error('Selected heart rate monitor is no longer available.');
+          }
+          heartMeter = selectedHeartMeter[1];
           heartMeter.listen();
         }
 
         let cadenceMeterID = $cm.value;
         let cadenceMeter;
         if(cadenceMeterID) {
-          cadenceMeter = cadenceMeters.find(m => m[0] === cadenceMeterID)[1];
+          let selectedCadenceMeter = cadenceMeters.find(m => m[0] === cadenceMeterID);
+          if(!selectedCadenceMeter) {
+            throw new Error('Selected cadence meter is no longer available.');
+          }
+          cadenceMeter = selectedCadenceMeter[1];
           cadenceMeter.listen();
         }
 
         let powerMeterID = $pm.value;
-        let powerMeter = powerMeters.find(m => m[0] === powerMeterID)[1];
+        let selectedPowerMeter = powerMeters.find(m => m[0] === powerMeterID);
+        if(!selectedPowerMeter) {
+          throw new Error('Selected power meter is no longer available.');
+        }
+        let powerMeter = selectedPowerMeter[1];
         powerMeter.listen({heartMeter, cadenceMeter});
 
         localStorage.setItem('form-weight', riderWeight);
         localStorage.setItem('form-unit', unit);
+
+        await waitForGoogleMaps();
 
         if($previous.value) {
           let raw = managedLocalStorage.get($previous.value);
@@ -456,6 +520,9 @@ export async function registerUI() {
       })()
       .catch(error => {
         console.log("Error: ", error);
+        $btn.classList.remove('disabled');
+        let errMsg = (error && error.message) ? error.message : 'Could not start the ride. Please try again.';
+        showErrorMessage(errMsg);
       });
     } else {
       let msg = '';
@@ -464,12 +531,7 @@ export async function registerUI() {
       } else if(!$weight.value) {
         msg = 'Please enter the riders weight.';
       }
-
-      let $msg = document.getElementById('messages');
-      $msg.innerHTML = msg;
-      $msg.style.display = 'block';
-
-      window.scrollTo(0, 0);
+      showErrorMessage(msg);
     }
   };
 

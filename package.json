@@ -5,9 +5,9 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node_modules/.bin/webpack-dev-server",
-    "build": "webpack --config webpack.production.config.js",
-    "build:secure": "node build-with-env.js && webpack --config webpack.production.config.js",
+    "start": "NODE_OPTIONS=--openssl-legacy-provider node_modules/.bin/webpack-dev-server",
+    "build": "NODE_OPTIONS=--openssl-legacy-provider webpack --config webpack.production.config.js",
+    "build:secure": "NODE_OPTIONS=--openssl-legacy-provider node build-with-env.js && NODE_OPTIONS=--openssl-legacy-provider webpack --config webpack.production.config.js",
     "postbuild": "node build-with-env.js"
   },
   "keywords": [],

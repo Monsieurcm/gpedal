@@ -68,6 +68,19 @@ SECURITY.md          # This file
 - Check Google Cloud Console for API restrictions
 - Ensure Maps API is enabled in your project
 
+**Google Maps error: `RefererNotAllowedMapError`**
+- In Google Cloud Console, open your API key restrictions
+- Set `Application restrictions` to `HTTP referrers (web sites)`
+- Add authorized referrers for GitHub Pages:
+   - `https://monsieurcm.github.io/*`
+   - `https://monsieurcm.github.io/gpedal/*`
+- For local development, also allow:
+   - `https://localhost/*`
+   - `http://localhost/*`
+   - `https://127.0.0.1/*`
+   - `http://127.0.0.1/*`
+- Ensure `API restrictions` includes `Maps JavaScript API` (and any additional Maps APIs you actually use)
+
 ## References
 
 - [Google Cloud Security Best Practices](https://cloud.google.com/docs/authentication/best-practices-applications)
