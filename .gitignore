@@ -3,3 +3,8 @@ node_modules
 deploy.sh
 public
 src/lib/oauth.js
+.env
+.env.local
+*.key
+*.pem
+dist/
