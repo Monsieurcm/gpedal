@@ -81,6 +81,18 @@ export async function registerUI() {
     $msg.style.display = 'none';
   };
 
+  let getBeginErrorMessage = (error) => {
+    let errMsg = (error && error.message) ? error.message : 'Could not start the ride. Please try again.';
+    if(errMsg !== 'REQUEST_DENIED') {
+      return errMsg;
+    }
+
+    let origin = window.location.origin;
+    let path = window.location.pathname;
+    let basePath = path.endsWith('/') ? path : path.substring(0, path.lastIndexOf('/') + 1);
+    return 'Google Maps returned REQUEST_DENIED. In Google Cloud Console: enable billing, enable Maps JavaScript API + Geocoding API + Elevation API, and authorize referrers ' + origin + '/* and ' + origin + basePath + '* for this API key.';
+  };
+
   let waitForGoogleMaps = (timeoutMs = 12000) => {
     return new Promise((resolve, reject) => {
       let start = Date.now();
@@ -521,8 +533,7 @@ export async function registerUI() {
       .catch(error => {
         console.log("Error: ", error);
         $btn.classList.remove('disabled');
-        let errMsg = (error && error.message) ? error.message : 'Could not start the ride. Please try again.';
-        showErrorMessage(errMsg);
+        showErrorMessage(getBeginErrorMessage(error));
       });
     } else {
       let msg = '';
