@@ -1,80 +1,72 @@
-# 🔒 Security Guidelines for GPedal
+# 🔒 Security Guidelines for GPedal (Fork Configuration)
 
 ## API Keys Management
 
-### Current Security Issue
-⚠️ **URGENT**: The Google Maps API key is currently exposed in the public repository (`dist/index.html`).
+### ✅ Fork Status
+This is a **forked version** of GPedal configured with a dedicated Google Maps API key: **`AIzaSyBUEC4iOMrgHjI0P0Lgq337LPgvmhQFzJE`**
 
-### Immediate Actions Required
+### Configuration for This Fork
 
-1. **Regenerate the API Key**
-   - Go to [Google Cloud Console](https://console.cloud.google.com/)
-   - Delete the exposed key: `AIzaSyD8CBYhq7f2aibteBvLz2jvRZAHu346qJM`
-   - Create a new key
+1. **Environment File Setup**
+   - `.env.example` contains the default key for this fork
+   - `.env.local` is your local configuration (never committed)
+   - To use this fork, simply run: `npm run build:secure`
 
-2. **Restrict the New Key**
-   - **API Restrictions**: Limit to "Maps JavaScript API" only
-   - **HTTP referrers**: Add authorized domains:
-     - `https://chadj.github.io`
-     - `https://chadj.github.io/gpedal/*`
-     - `http://localhost:*` (for local development)
+2. **Building with the Fork's API Key**
+   ```bash
+   # Install dependencies
+   npm install
 
-3. **Store Securely**
-   - Copy `.env.example` to `.env.local`
-   - Add your new key to `.env.local`
-   - **Never commit `.env.local`** (it's in .gitignore)
+   # Build with the configured key
+   npm run build:secure
 
-### Local Development Setup
+   # Start development server
+   npm start
+   ```
 
-```bash
-# 1. Copy the example file
-cp .env.example .env.local
+3. **Using Your Own API Key**
+   If you want to use a different key:
+   - Edit `.env.local` and replace the key
+   - Run `npm run build:secure` again
 
-# 2. Edit .env.local with your actual keys
-nano .env.local
-
-# 3. Run the build script (coming soon)
-npm run build:secure
-```
-
-### Handling Exposed Secrets in Git History
-
-If needed to clean the git history:
-
-```bash
-# Using git-filter-repo (recommended)
-pip install git-filter-repo
-git-filter-repo --invert-paths --paths dist/index.html
-```
-
-## Best Practices
+### Security Best Practices
 
 ✅ **DO:**
 - Use environment variables for all sensitive data
-- Store `.env.local` locally only
-- Rotate keys periodically
+- Store `.env.local` locally only (it's in .gitignore)
+- Rotate keys periodically if compromise is suspected
 - Use minimal API scopes
 - Monitor API usage for unusual activity
+- Restrict keys to specific domains and APIs only
 
 ❌ **DON'T:**
-- Commit `.env` files to version control
+- Commit `.env.local` to version control
 - Share API keys in chat, email, or issues
 - Use the same key across multiple projects
 - Hardcode secrets in source code
 - Keep exposed keys active
 
-## GitHub Pages Deployment
+### File Structure
 
-When deploying to GitHub Pages, you have two options:
+```
+.env.example          # Template with default fork key
+.env.local           # Local config (gitignored)
+.gitignore           # Excludes sensitive files
+build-with-env.js    # Script to inject env vars into build
+SECURITY.md          # This file
+```
 
-### Option 1: Use Secrets in GitHub Actions (Recommended)
-- Store the API key in GitHub Secrets
-- Use Actions to build and deploy with the secret injected
+## Troubleshooting
 
-### Option 2: Use a Restricted Domain-Only Key
-- Create a key with strict HTTP referrer restrictions
-- Include it in committed files (dist/)
-- Monitor usage closely
+**Build fails with "GOOGLE_MAPS_API_KEY not found"**
+- Ensure `.env.local` exists
+- Run: `cp .env.example .env.local`
+- Add your key to `.env.local`
+
+**API calls fail after build**
+- Verify the key in `.env.local`
+- Check Google Cloud Console for API restrictions
+- Ensure Maps API is enabled in your project
 
 ## References
 
