@@ -3,14 +3,14 @@
 ## API Keys Management
 
 ### ✅ Fork Status
-This is a **forked version** of GPedal configured with a dedicated Google Maps API key: **`AIzaSyBUEC4iOMrgHjI0P0Lgq337LPgvmhQFzJE`**
+This is a **forked version** of GPedal. A Google Maps API key is required to run the application.
 
 ### Configuration for This Fork
 
 1. **Environment File Setup**
-   - `.env.example` contains the default key for this fork
+   - `.env.example` contains the template (no real key committed)
    - `.env.local` is your local configuration (never committed)
-   - To use this fork, simply run: `npm run build:secure`
+   - Copy the template and add your key: `cp .env.example .env.local`, then edit `.env.local`
 
 2. **Building with the Fork's API Key**
    ```bash

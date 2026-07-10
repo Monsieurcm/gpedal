@@ -33,7 +33,7 @@ const templateContent = fs.existsSync(templatePath)
 
 // Replace the placeholder
 const outputContent = templateContent.replace(
-  /key=[A-Za-z0-9_-]+/,
+  /key=GOOGLE_MAPS_API_KEY_PLACEHOLDER|key=[A-Za-z0-9_-]{39,}/,
   `key=${GOOGLE_MAPS_API_KEY}`
 );
 
